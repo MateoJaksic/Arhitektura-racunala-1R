@@ -1,0 +1,170 @@
+                ORG 0                           ; inicijaliziranje
+                B   RESET_PP                    ; skok na obradu iznimke RESET
+
+                ORG 0x18                        ; pozicioniranje na 0x18
+                B   IRQ_PP                      ; skok na obradu iznimke IRQ
+
+RESET_PP        ; inicijaliziranje RTC-a
+               
+                MSR CPSR, #0b11010010           ; prelazak u način rada IRQ
+                MOV R13, #0x10000               ; inicijalizacija R13_irq
+                
+                MSR CPSR, #0b11010011           ; prelazak u način rada SVC
+                MOV R13, #0xFC00                ; inicijalizacija R13_svc
+                        
+                LDR R2, RTC                     ; dohvat adrese RTC-a
+                MOV R6, #0                      ; priprema podatka
+                STR R6, [R2, #0x0C]             ; spremanje podatka u LR
+                MOV R6, #50                     ; priprema podatka, pod pretpostavkom da će 50 ciklusa biti cca 5 sekundi u simulaciji
+                STR R6, [R2, #0x04]             ; spremanje podatka u MR
+                MOV R6, #1                      ; priprema podatka
+                STR R6, [R2, #0x10]             ; dozvoli prekid RTC-a (u CR)
+                MRS R2, CPSR                    ; dozvoli prekid IRQ
+                BIC R2, R2, #0b10000000         ; priprema za onemogućavanje prekida IRQ
+                MSR CPSR, R2                    ; onemogućavanje prekida IRQ
+
+                CMP R7, #0                      ; pogledamo je li prvi poziv
+                BEQ MAIN                        ; ako je prvi poziv, onda moramo neke tehnikalije obaviti
+                CMP R7, #1                      ; gledamo trebamo li u prvo stanje
+                BEQ PRVI                        ; odlazimo u prvo stanje
+                CMP R7, #2                      ; gledamo trebamo li u drugo stanje
+                BEQ DRUGI                       ; odlazimo u drugo stanje
+                CMP R7, #3                      ; gledamo trebamo li u treće stanje
+                BEQ TRECI                       ; odlazamo u treće stanje
+                CMP R7, #4                      ; gledamo trebamo li u četvrto stanje
+                BEQ CETVRTI                     ; odlazimo u četvrto stanje
+                CMP R7, #5                      ; gledamo trebamo li u peto stanje
+                BEQ PETI                        ; odlazimo u peto stanje
+                CMP R7, #6                      ; gledamo trebamo li u šesto stanje
+                BEQ SESTI                       ; odlazimo u šesto stanje
+                
+IRQ_PP         ; prekidni potprogram za IRQ
+                
+                STMFD SP!, {R2, R6}             ; spremanje konteksta
+        
+                LDR R2, RTC                     ; dohvati adresu RTC-a
+                MOV R6, #0                      ; inicijaliziraj sljedeći ciklus brojanja
+                STR R6, [R2, #0x0C]             ; pobriši brojilo (MR ostaje 5)
+                STR R6, [R2, #0x08]             ; obriši status (šalje se bilo što)
+                
+                CMP R7, #6                      ; gledamo jesmo li u stanju šest
+                ADDLT R7, R7, #1                ; ako nismo, povećavamo counter stanja za jedan
+                BLT NASTAVI                     ; nastavljamo dalje
+                SUBEQ R7, R7, #5                ; ako jesmo, onda stavljamo counter stanja na jedan (prvo stanje)
+                BEQ NASTAVI                     ; nastavljamo dalje
+
+NASTAVI         LDMFD SP!, {R2, R6}             ; obnovi kontekst
+                B   RESET_PP                    ; skok u RESET_PP
+
+
+MAIN            LDR R0, GPIO1                   ; dohvat adrese GPIO1
+                LDR R1, GPIO2                   ; dohvat adrese GPIO2
+                ADD R0, R0, #4                  ; pozicioniranje u PB_DR, jer ju koristi LCDWR
+                MOV R4, #0b00100000             ; inicijalizacija na početno stanje
+                STR R4, [R1, #0]                ; spremanje početnog stanja
+                MOV R5, #0b11100000             ; priprema za zadavanje smjera u PA_DDR (0-4 ulazni, 5-7 izlazni)
+                STR R5, [R1, #8]                ; zadavanje smjerova u PA_DDR
+                CMP R7, #0                      ; provjerimo je li vrijednost u R7 jednaka 0
+                MOVEQ R7, #1                    ; ako je, onda napravi R7 jednak 1
+                B   RESET_PP                    ; skok u RESET_PP
+
+PRVI            ; 1 0 0 HODAJ
+                MOV R4, #0b00100000             ; priprema podataka (o LED diodama) za PA_DR
+                STR R4, [R1, #0]                ; spremanje podataka u PA_DR
+                BL  HODAJ                       ; poziv funkcije HODAJ
+                B   VRTI                        ; skok u beskonačnu petlju
+
+DRUGI           ; 1 0 0 STANI
+                MOV R4, #0b00100000             ; priprema podataka (o LED diodama) za PA_DR
+                STR R4, [R1, #0]                ; spremanje podataka u PA_DR
+                BL  STANI                       ; poziv funkcije STANI
+                B   VRTI                        ; skok u beskonačnu petlju
+
+TRECI           ; 1 1 0 STANI
+                MOV R4, #0b01100000             ; priprema podataka (o LED diodama) za PA_DR
+                STR R4, [R1, #0]                ; spremanje podataka u PA_DR
+                BL  STANI                       ; poziv funkcije STANI
+                B   VRTI                        ; skok u beskonačnu petlju
+
+CETVRTI         ; 0 0 1 STANI
+                MOV R4, #0b10000000             ; priprema podataka (o LED diodama) za PA_DR
+                STR R4, [R1, #0]                ; spremanje podataka u PA_DR
+                BL  STANI                       ; poziv funkcije STANI
+                B   VRTI                        ; skok u beskonačnu petlju
+
+PETI            ; 0 1 0 STANI
+                MOV R4, #0b01000000             ; priprema podataka (o LED diodama) za PA_DR
+                STR R4, [R1, #0]                ; spremanje podataka u PA_DR
+                BL  STANI                       ; poziv funkcije STANI
+                B   VRTI                        ; skok u beskonačnu petlju
+
+SESTI           ; 1 0 0 STANI
+                MOV R4, #0b00100000             ; priprema podataka (o LED diodama) za PA_DR
+                STR R4, [R1, #0]                ; spremanje podataka u PA_DR
+                BL  STANI                       ; poziv funkcije STANI
+                B   VRTI                        ; skok u beskonačnu petlju
+
+VRTI            B   VRTI                        ; beskonačna petlja (kako bi dobili na trajanju stanja)
+
+HODAJ           ; potprogram za slanje riječi "HODAJ"
+                
+                STMFD SP!, {LR}                 ; spremi kontekst       
+
+                MOV R3, #0x0D                   ; briše se ulazni registar
+                BL LCDWR                        ; poziv funkcije LCDWR
+                MOV R3, #0x48                   ; slanje znaka ‘H'
+                BL LCDWR                        ; poziv funkcije LCDWR
+                MOV R3, #0x4F                   ; slanje znaka ‘O'
+                BL LCDWR                        ; poziv funkcije LCDWR
+                MOV R3, #0x44                   ; slanje znaka ‘D'
+                BL LCDWR                        ; poziv funkcije LCDWR
+                MOV R3, #0x41                   ; slanje znaka ‘A'
+                BL LCDWR                        ; poziv funkcije LCDWR
+                MOV R3, #0x4A                   ; slanje znaka ‘J'
+                BL LCDWR                        ; poziv funkcije LCDWR
+                MOV R3, #0x0A                   ; ispis znakova na zaslon
+                BL LCDWR                        ; poziv funkcije LCDWR     
+        
+                LDMFD SP!, {LR}                 ; obnovi kontekst
+                MOV PC, LR                      ; vraćanje u glavni program
+
+STANI           ; potprogram za slanje riječi "STANI"
+                
+                STMFD SP!, {LR}                 ; spremanje konteksta
+
+                MOV R3, #0x0D                   ; briše se ulazni registar
+                BL LCDWR                        ; poziv funkcije LCDWR
+                MOV R3, #0x53                   ; slanje znaka ‘S'
+                BL LCDWR                        ; poziv funkcije LCDWR
+                MOV R3, #0x54                   ; slanje znaka ‘T'
+                BL LCDWR                        ; poziv funkcije LCDWR
+                MOV R3, #0x41                   ; slanje znaka ‘A'
+                BL LCDWR                        ; poziv funkcije LCDWR
+                MOV R3, #0x4E                   ; slanje znaka ‘N'
+                BL LCDWR                        ; poziv funkcije LCDWR
+                MOV R3, #0x49                   ; slanje znaka ‘I'
+                BL LCDWR                        ; poziv funkcije LCDWR
+                MOV R3, #0x0A                   ; ispis znakova na zaslon
+                BL LCDWR                        ; poziv funkcije LCDWR
+                
+                LDMFD SP!, {LR}                 ; obnovi kontekst
+                MOV PC, LR                      ; vraćanje u glavni program
+        
+LCDWR           ; potprogram za pisanje na LCD prijamnik
+
+                STMFD SP!, {R3}                 ; spremanje konteksta
+
+                AND R3, R3, #0x7F               ; postavi bit 7 u nulu (za svaki slučaj jer u R3 bi mogla biti 1) i pošalji znak
+                STRB R3, [R0]                   ; spremamo sadržaj R3 u lokaciju alociranu za R0
+                ORR R3, R3, #0x80               ; postavi bit 7 u jedan (podigni impuls)
+                STRB R3, [R0]                   ; spremamo sadržaj R3 u lokaciju alociranu za R0
+                AND R3, R3, #0x7F               ; postavi bit 7 u nulu (spusti impuls)
+                STRB R3, [R0]                   ; spremamo sadržaj R3 u lokaciju alociranu za R0
+        
+                LDMFD SP!, {R3}                 ; obnova konteksta
+                MOV PC, LR                      ; povratak u pozivni program
+        
+
+GPIO1           DW  0xFFFF0F00                  ; bazna adresa za GPIO1
+GPIO2           DW  0xFFFF0B00                  ; bazna adresa za GPIO2
+RTC             DW  0xFFFF0E00                  ; bazna adresa za RTC

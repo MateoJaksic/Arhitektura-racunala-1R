@@ -1,0 +1,114 @@
+        ORG 0                 ; pozicioniramo se na 0
+
+        MOV R7, #0x500        ; s 0x500 čitamo podatke
+        MOV R4, #0x1000       ; na 0x1000 spremamo rezultate
+
+VRTNJA                        ; kod za učitavanje i razvrstavanje podataka 
+        LDR R1, [R7],#4       ; operacija
+        LDR R2, [R7],#4       ; prvi operand
+        LDR R3, [R7],#4       ; drugi operand
+        
+        LDR R5, ZAVRSNI       ; dodjeljujemo R5 vrijednost očekivanog kraja blokova
+        CMP R1, R5            ; provjeravamo jesmo li dosli do kraja blokova
+        BEQ KRAJ              ; ako su jednaki, onda završavamo
+        
+        LDR R5, OPE0          ; dodjeljujemo R5 vrijednost 0x0 preko labele OPE0
+        CMP R1, R5            ; provjeravamo je li u R1 zapisan 0x0
+        BEQ ZBROJI            ; ukoliko je, izvodimo zbrajanje
+
+        LDR R5, OPE1          ; dodjeljujemo R5 vrijednost 0x1 preko labele OPE1
+        CMP R1, R5            ; provjeravamo je li u R1 zapisan 0x1
+        BEQ ODUZMI            ; ukoliko je, izvodimo oduzimanje           
+
+        LDR R5, OPE2          ; dodjeljujemo R5 vrijednost 0x2 preko labele OPE2
+        CMP R1, R5            ; provjeravamo je li u R1 zapisan 0x2
+        BEQ MNOZI             ; ukoliko je, izvodimo mnozenje             
+
+        LDR R5, OPE3          ; dodjeljujemo R5 vrijednost 0x3 preko labele OPE3
+        CMP R1, R5            ; provjeravamo je li u R1 zapisan 0x3
+        MOV R0,#0
+        MOV SP, #0x10000      ; inicijaliziramo stog 
+        STMFD SP!, {R2,R3}    ; spremanje konteksta
+        BL  DIJELI            ; poziv funkcije za dijeljenje
+        ADD SP, SP, #8        ; čišćenje stoga
+        STR R0, [R4], #4      ; spremamo dobivenu vrijednost dijeljenjem
+        B   VRTNJA            ; nastavljamo učitavanje iz memorije i obradu podataka    
+
+ZBROJI  ADD R6, R2, R3        ; zbrajanje        
+        STR R6, [R4], #4      ; spremanje zbroja u memoriju na odgovarajuće mjesto 
+        B   VRTNJA            ; nastavljamo učitavanje iz memorije i obradu podataka
+
+ODUZMI  SUB R6, R2, R3        ; oduzimanje
+        STR R6, [R4], #4      ; spremanje razlike u memoriju na odgovarajuće mjesto
+        B   VRTNJA            ; nastavljamo učitavanje iz memorije i obradu podataka
+        
+MNOZI   MUL R6, R2, R3        ; mnozenje
+        STR R6, [R4], #4      ; spremanje umnoška u memoriju na odgovarajuće mjesto
+        B   VRTNJA            ; nastavljamo učitavanje iz memorije i obradu podataka
+
+DIJELI                        ; funkcija za dijeljenje
+        STMFD SP!,{R2,R3}     ; spremamo kontekst
+        LDR R2, [SP, #0]      ; dohvaćamo prvi operand sa stoga
+        LDR R3, [SP, #4]      ; dohvaćamo drugi operand sa stoga
+        CMP R2,#0             ; uspoređujemo vrijednost u R2 s 0
+        BLT NEG1              ; idemo na labelu NEG1 ako je vrijednost u R2 manja od 0 (u labeli trebamo dobiti apsolutnu vrijednost)
+NAKON1  CMP R3,#0             ; uspoređujemo vrijednost u R3 s 0
+        BLT NEG2              ; idemo na labelu NEG2 ako je vrijednost u R3 manja od 0 (u labeli trebamo dobiti apsoolutnu vrijednost)
+        BEQ NULA              ; idemo na labelu NULA ako je vrijednost u R3 jednaka 0 (dijeljenje s 0 daje 0 po uputama u zadatku)
+
+PAZI    CMP R2,R3             ; uspoređujemo vrijednosti u R2 i R3
+        BLT NULA              ; idemo na labelu NULA ako je vrijednost u R2 manja od vrijednosti u R3
+        B   VRTI              ; idemo na labelu VRTI
+          
+VRTI    SUB R2,R2,R3          ; oduzimamo vrijednost u R3 od vrijednosti u registru R2 (metoda uzastopnog oduzimanja 
+        ADD R0,R0,#1          ; uvećavamo vrijednost u R1 za 1 kako bi označili da je jedno uspješno oduzimanje obavljeno
+        CMP R2,R3             ; uspoređujemo vrijednosti u R2 i R3
+        BGE VRTI              ; idemo na labelu VRTI ako je vrijednost u R2 jednaka ili veća od vrijednosti u R3
+        BLT GOTOVI            ; idemo na labelu GOTOVI ako je vrijednost u registru R2 manja od vrijednosti u R3
+         
+NEG1    RSB R2,R2,#0          ; radimo obrnuto oduzimanje vrijednosti u R2 i 0 (0 - R2) (dobivanje apsolutne vrijednosti)
+        MOV R8,#1             ; u R8 zapisujemo broj 1 kako bi si oznacio da je jedan od operanda negativan, a mi smo uzeli njegovu apsolutnu vrijednost
+        B   NAKON1            ; vraćamo se na poziciju nakon grananja na labelu
+
+NEG2    RSB R3,R3,#0          ; radimo obrnuto oduzimanje vrijednosti u R3 i 0 (0 - R3) (dobivanje apsolutne vrijednosti)
+        CMP R8,#1             ; provjeravamo imamo li u R8 već vrijednost 1 što označava da je jedan operand bio negativan, a mi smo ga uzeli apsolutnog (kao pozitivnog)
+        BLT POSTAVI           ; ako je vrijednost u R8 manja od 1 (tj. 0) znaći da prvi operand nije bio negativan, pa idemo na labelu POSTAVI  
+        BEQ OPOVRG            ; ako je vrijednost u R8 jednaka 1, to znaći da je već jedan operand bio negativan, pa idemo na labelu OPOVRG gdje opovrgavamo negativnost (-/- == +/+)
+
+POSTAVI MOV R8,#1             ; u R8 zapisujemo broj 1 kako bi si oznacio da je jedan od operanda negativan, a mi smo uzeli njegovu apsolutnu vrijednost 
+        B   PAZI              ; vraćamo se na labelu PAZI 
+
+OPOVRG  MOV R8,#0             ; s obzirom da su oba operanda negativna, a -/- ima isti efekt kao +/+, možemo samo zanemariti činjenicu da smo uzeli apsolutne vrijednosti
+        B   PAZI              ; vraćamo se na labelu PAZI
+
+NULA    MOV R0,#0             ; u registar R0 spremamo vrijednost 0
+        B   GOTOVI            ; idemo na labelu GOTOVI
+
+GOTOVI  CMP R8,#1             ; provjeravamo jesmo li imali negativan broj pretvoren u pozitivni 
+        BLT NASTAVI           ; ako je vrijednost u R8 manja od 1 (tj. 0) znaći da nismo imali negativni operand (zanemarimo -/- slučaj) idemo na labelu NASTAVI
+        BEQ REDO              ; ako je vrijednost u R8 jednaka 1, znaći da smo imali negativan operand stoga moramo pretvoriti rješenje u negativno u labeli REDO
+
+REDO    RSB R0,R0,#0          ; radimo obrnuto oduzimanje vrijednosti u R0 i 0 (0 - R0) (dobivanje negativne vrijednosti)
+        MOV R8,#0             ; spremamo vrijednost 0 u R8, kako bi poništili oznaćavanje negativnosti (mogli smo staviti R8 u kontekst, ali ovako mi je praktičnije zbog stoga)
+
+NASTAVI LDMFD SP!,{R2,R3}     ; obnavljamo kontekst
+        MOV PC,LR             ; izlazimo iz funkcije
+
+KRAJ    LDR R5, ZAKLJU        ; priprema zaključnog znaka rezultatnog bloka
+        STR R5, [R4], #4      ; spremanje zaključnog znaka rezultatnog bloka
+        SWI 0x123456          ; kraj programa
+
+ZAVRSNI DW  0x80808080        ; završni znak koji predstavlja kraj blokova ulaznih podataka
+ZAKLJU  DW  0xFFFFFFFF        ; zaključni znak rezultatnog bloka
+OPE0    DW  0x0               ; zbrajanje
+OPE1    DW  0x1               ; oduzimanje
+OPE2    DW  0x2               ; mnozenje
+OPE3    DW  0x3               ; dijeljenje
+
+        ORG 0x500             ; pozicioniranje u memoriji
+
+INPUT   DW  0x3, 0xFFFFFEFF, 0x00000010     ; daje 0xFFFFFFF0
+        DW  0x1, 0x000001F4, 0xFFFFFD44     ; daje 0x000004B0
+        DW  0x2, 0xFFFFFFFE, 0x0000000A     ; daje 0xFFFFFFEC
+        DW  0x3, 0xFFFFF000, 0xFFFFFFC0     ; daje 0x00000040
+        DW  0x80808080
